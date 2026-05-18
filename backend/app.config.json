@@ -1,0 +1,5 @@
+{
+  "instanceLabel": "api",
+  "requestTimeoutMs": 3000,
+  "maxItems": 1000
+}
