@@ -3,13 +3,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: technologie_chmurowe-nginx:${APP_VERSION:-latest}
     depends_on:
       backend_1:
         condition: service_started
       backend_2:
         condition: service_started
-    ports:
-      - "80:8080"
     networks:
       - proxy-net
     configs:
@@ -20,14 +19,22 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: technologie_chmurowe-backend_1:${APP_VERSION:-latest}
+    env_file:
+      - path: ./.env.common
+        required: true
+      - path: ./.env.local
+        required: false
     environment:
-      BACKEND_PORT: ${BACKEND_PORT}
+      BACKEND_PORT: ${BACKEND_PORT:?Ustaw BACKEND_PORT w .env.common}
       INSTANCE_ID: api-1
       TASK_QUEUE_NAME: jobs:items
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    labels:
+      - app.log_level=${LOG_LEVEL:-info}
     secrets:
       - db_user
       - db_password
@@ -48,14 +55,22 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: technologie_chmurowe-backend_2:${APP_VERSION:-latest}
+    env_file:
+      - path: ./.env.common
+        required: true
+      - path: ./.env.local
+        required: false
     environment:
-      BACKEND_PORT: ${BACKEND_PORT_2}
+      BACKEND_PORT: ${BACKEND_PORT_2:?Ustaw BACKEND_PORT_2 w .env.common}
       INSTANCE_ID: api-2
       TASK_QUEUE_NAME: jobs:items
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    labels:
+      - app.log_level=${LOG_LEVEL:-info}
     secrets:
       - db_user
       - db_password
@@ -76,13 +91,21 @@ services:
     build:
       context: .
       dockerfile: worker/Dockerfile
+    image: technologie_chmurowe-worker:${APP_VERSION:-latest}
+    env_file:
+      - path: ./.env.common
+        required: true
+      - path: ./.env.local
+        required: false
     environment:
       INSTANCE_ID: worker-1
       TASK_QUEUE_NAME: jobs:items
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    labels:
+      - app.log_level=${LOG_LEVEL:-info}
     secrets:
       - db_user
       - db_password
@@ -111,7 +134,7 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_USER_FILE: /run/secrets/db_user
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     volumes:
@@ -129,8 +152,30 @@ services:
 
   adminer:
     image: adminer:4
-    ports:
-      - "8080:8080"
+    profiles: ["debug"]
+    networks:
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: ["debug"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    networks:
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  db-migrator:
+    image: alpine:3.20
+    profiles: ["migrate"]
+    restart: "no"
+    command: ["sh", "-c", "echo migration done"]
     networks:
       - db-net
     depends_on:
